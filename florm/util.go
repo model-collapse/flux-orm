@@ -4,11 +4,28 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"reflect"
+	"sort"
 	"strings"
 
 	"github.com/influxdata/influxdb-client-go/v2/api/query"
 )
+
+func strDedup(s []string) []string {
+	ret := make([]string, 0, len(s))
+	sort.Strings(s)
+	past := ""
+	for _, ss := range s {
+		if ss != past {
+			ret = append(ret, ss)
+		}
+
+		past = ss
+	}
+
+	return ret
+}
 
 func fkvS(k, v string) string {
 	return fmt.Sprintf("%s:%s", k, v)
@@ -39,6 +56,31 @@ func fkvSJ(k string, s interface{}) string {
 	ss, _ := json.Marshal(s)
 
 	return fmt.Sprintf("%s:%s", k, ss)
+}
+
+func interfaceToFloat(v interface{}) (ret float64, reterr error) {
+	switch f := v.(type) {
+	case int:
+		ret = float64(f)
+	case int32:
+		ret = float64(f)
+	case int64:
+		ret = float64(f)
+	case float32:
+		ret = float64(f)
+	case float64:
+		ret = f
+	default:
+		reterr = fmt.Errorf("invalid type to be converted float")
+	}
+
+	return
+}
+
+func parseParam(p string) (k, v string) {
+	eles := strings.Split(p, ":")
+	k, v = eles[0], eles[1]
+	return
 }
 
 func fillStrToValue(s string, v reflect.Value) {
@@ -97,7 +139,7 @@ func recurseFluxFlieds(v reflect.Value) (ret []fluxField, reterr error) {
 		fld := v.Field(i)
 		tf := tp.Field(i)
 		if tf.Anonymous && fld.Kind() == reflect.Struct {
-			fds, err := recurseFluxFlieds(v)
+			fds, err := recurseFluxFlieds(fld)
 			if err != nil {
 				reterr = err
 				return
@@ -117,7 +159,8 @@ func recurseFluxFlieds(v reflect.Value) (ret []fluxField, reterr error) {
 			switch fld.Kind() {
 			case reflect.Float32, reflect.Float64:
 				f.floatValue = fld.Float()
-
+			case reflect.Int, reflect.Int32, reflect.Int64:
+				f.floatValue = float64(fld.Int())
 			case reflect.String:
 				f.strValue = fld.String()
 			}
@@ -139,4 +182,58 @@ func getYieldIDFromMeta(m *query.FluxTableMetadata) string {
 	}
 
 	return ""
+}
+
+func assignRecordToStruct(r *query.FluxRecord, v reflect.Value) {
+	if v.Kind() != reflect.Struct {
+		return
+	}
+
+	tp := v.Type()
+	for i := 0; i < v.NumField(); i++ {
+		fld := tp.Field(i)
+		if fld.Anonymous && fld.Type.Kind() == reflect.Struct {
+			assignRecordToStruct(r, v.Field(i))
+			continue
+		}
+
+		tag := fld.Tag.Get("florm")
+		log.Printf("tag is %s", tag)
+
+		if tag == "" {
+			continue
+		}
+
+		tg, err := praseTag(tag)
+		if err != nil {
+			panic(err)
+		}
+
+		val := r.ValueByKey(tg.name)
+		if val != nil {
+			func() {
+				defer func() {
+					if e := recover(); e != nil {
+						log.Printf("inconsistent type of field assign: [%s / %s], e = %v", v.Field(i).Kind().String(), reflect.TypeOf(val).Kind().String(), e)
+					}
+				}()
+
+				if !v.Field(i).CanSet() {
+					log.Printf("WTF?")
+				}
+
+				if vf, suc := val.(float64); suc {
+					if v.Field(i).Kind() == reflect.Int32 ||
+						v.Field(i).Kind() == reflect.Int64 ||
+						v.Field(i).Kind() == reflect.Int {
+						v.Field(i).SetInt(int64(vf))
+					} else {
+						v.Field(i).SetFloat(vf)
+					}
+				} else if vs, suc := val.(string); suc {
+					v.Field(i).SetString(vs)
+				}
+			}()
+		}
+	}
 }

@@ -14,7 +14,7 @@ type FluxStream interface {
 	AssignName(n string) FluxStream
 	Statement() string
 	Yield(dst interface{}) FluxStream
-	Update(src interface{}) FluxStream
+	Update(sel []string, rc interface{}) FluxStream
 	AddRef()
 	Ref() int
 
@@ -44,13 +44,13 @@ func (f *FluxSinglePipe) Yield(dst interface{}) FluxStream {
 	return f
 }
 
-func (f *FluxSinglePipe) Update(src interface{}) FluxStream {
+func (f *FluxSinglePipe) Update(sel []string, src interface{}) FluxStream {
 	if !isInfluxModel(src) {
 		panic(errors.New("the update model should be a InfluxModel"))
 	}
 
 	f.AddRef()
-	f.session.registerUpdate(f, src)
+	f.session.registerUpdate(f, sel, src)
 	return f
 }
 
@@ -100,9 +100,9 @@ func (f *FluxMultiplePipe) Yield(dst interface{}) FluxStream {
 	return f
 }
 
-func (f *FluxMultiplePipe) Update(src interface{}) FluxStream {
+func (f *FluxMultiplePipe) Update(sel []string, src interface{}) FluxStream {
 	f.AddRef()
-	f.session.registerUpdate(f, src)
+	f.session.registerUpdate(f, sel, src)
 	return f
 }
 

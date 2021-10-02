@@ -10,7 +10,6 @@ import (
 	"reflect"
 	"strings"
 
-	api "github.com/influxdata/influxdb-client-go/v2/api"
 	"github.com/influxdata/influxdb-client-go/v2/api/query"
 )
 
@@ -32,18 +31,71 @@ func (ss *FluxSession) buildYields() string {
 const updatePivotClause = `|> pivot(columnKey: ["_field"], rowKey: ["_time"], valueColumn: "_value")`
 const updateToClause = `|> to(bucket:%s, tagColumns: %s, fieldFn: %s)`
 
-func buildUpdateClause(bucket, name string, v interface{}) (string, error) {
-	buf := bytes.NewBuffer(make([]byte, YieldBufSize))
-	fmt.Fprintf(buf, "%s\n", name)
-	fmt.Fprintf(buf, updatePivotClause)
-	fmt.Fprintf(buf, "\n")
-
+func getUpdateFields(v interface{}, mp map[string]interface{}, replaceValue bool) (ret []fluxField, reterr error) {
 	vv := reflect.ValueOf(v)
 	if vv.Kind() == reflect.Ptr {
 		vv = vv.Elem()
 	}
 
 	flds, err := recurseFluxFlieds(vv)
+	if err != nil {
+		return nil, err
+	}
+
+	if mp != nil {
+		passAll := false
+		if _, suc := mp["*"]; suc {
+			passAll = true
+		}
+
+		for _, f := range flds {
+			if v, suc := mp[f.name]; suc || passAll {
+				nf := f
+
+				if replaceValue {
+					switch ff := v.(type) {
+					case float32, float64, int32, int64, int:
+						nf.floatValue, reterr = interfaceToFloat(v)
+					case string:
+						nf.strValue = ff
+					default:
+						reterr = fmt.Errorf("invalid type for field %s", f.name)
+						return
+					}
+				}
+
+				if reterr != nil {
+					return
+				}
+
+				ret = append(ret, nf)
+			}
+		}
+	}
+
+	return
+}
+
+func (ss *FluxSession) buildUpdateClause() (string, error) {
+	replace := false
+	if ss.update.src == nil && ss.model != nil {
+		ss.update.src = ss.model
+		replace = true
+	} else if ss.update.src != nil {
+		ss.update.vals = make(map[string]interface{})
+		for _, s := range ss.update.sel {
+			ss.update.vals[s] = nil
+		}
+	}
+
+	name := ss.update.stream.Name()
+
+	buf := bytes.NewBuffer(make([]byte, YieldBufSize))
+	fmt.Fprintf(buf, "%s\n", name)
+	fmt.Fprintf(buf, updatePivotClause)
+	fmt.Fprintf(buf, "\n")
+
+	flds, err := getUpdateFields(ss.update.src, ss.update.vals, replace)
 	if err != nil {
 		return "", err
 	}
@@ -53,9 +105,9 @@ func buildUpdateClause(bucket, name string, v interface{}) (string, error) {
 	for _, f := range flds {
 		if f.tp == ValueField {
 			if f.strValue == "" {
-				fmt.Fprintf(buf, "|> set(%s, %f)\n", f.name, f.floatValue)
+				fmt.Fprintf(buf, "|> set(\"%s\", %f)\n", f.name, f.floatValue)
 			} else {
-				fmt.Fprintf(buf, "|> set(%s, %s)\n", f.name, f.strValue)
+				fmt.Fprintf(buf, "|> set(\"%s\", \"%s\")\n", f.name, f.strValue)
 			}
 			valCols = append(valCols, f.name)
 		} else if f.tp == KeyField {
@@ -70,6 +122,7 @@ func buildUpdateClause(bucket, name string, v interface{}) (string, error) {
 		fnEles = append(fnEles, fmt.Sprintf("\"%s\":r.%s", vv, vv))
 	}
 
+	bucket := ss.update.src.(InfluxModel).Bucket()
 	tagFn := fmt.Sprintf("(r) => ({%s})", strings.Join(fnEles, ", "))
 	fmt.Fprintf(buf, updateToClause, bucket, string(tgnc), tagFn)
 	fmt.Fprintf(buf, "\n")
@@ -80,9 +133,8 @@ func buildUpdateClause(bucket, name string, v interface{}) (string, error) {
 func (ss *FluxSession) buildUpdates() (string, error) {
 	buf := bytes.NewBuffer(make([]byte, YieldBufSize))
 
-	for _, upd := range ss.updates {
-		name := upd.stream.Name()
-		cl, err := buildUpdateClause(upd.src.(InfluxModel).Bucket(), name, upd.src)
+	if up := ss.update; up != nil {
+		cl, err := ss.buildUpdateClause()
 		if err != nil {
 			return "", err
 		}
@@ -141,7 +193,7 @@ func (ss *FluxSession) ExecuteQuery(ctx context.Context) error {
 		script += "\n\n" + ss.buildYields()
 	}
 
-	if len(ss.updates) > 0 {
+	if ss.update != nil {
 		q, err := ss.buildUpdates()
 		if err != nil {
 			return err
@@ -152,7 +204,12 @@ func (ss *FluxSession) ExecuteQuery(ctx context.Context) error {
 
 	log.Printf(script)
 
-	result, err := ss.queryAPI.Query(ctx, script)
+	if ss.dbg {
+		return nil
+	}
+
+	qApi := ss.mgr.QueryAPI(ss.buckets)
+	result, err := qApi.Query(ctx, script)
 	if err != nil {
 		return err
 	}
@@ -178,20 +235,19 @@ func (ss *FluxSession) ExecuteQuery(ctx context.Context) error {
 
 func (ss *FluxSession) Insert(m InfluxModel) error {
 	script, err := modelToInsertString(m)
+	log.Printf(script)
 	if err != nil {
 		return err
 	}
 
-	ss.writeAPI.WriteRecord(script)
+	api := ss.mgr.WriteAPI(m.Bucket())
+	defer api.Flush()
+	api.WriteRecord(script)
 	return nil
 }
 
-var defaultQueryAPI api.QueryAPI
-var defaultWriteAPI api.WriteAPI
-var defaultBucket string
+var defaultAPIManager APIManager
 
-func RegisterDefaultAPI(q api.QueryAPI, w api.WriteAPI, bucket string) {
-	defaultQueryAPI = q
-	defaultWriteAPI = w
-	defaultBucket = bucket
+func RegisterDefaultAPIManager(m APIManager) {
+	defaultAPIManager = m
 }

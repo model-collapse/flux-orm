@@ -41,7 +41,7 @@ func TestFluxVars(t *testing.T) {
 	r := &TOPT{}
 	c.Yield(r)
 	t.Log(ss.QueryString())
-	ss.ExecuteQuery(context.Background())
+	//ss.ExecuteQuery(context.Background())
 }
 
 func TestFluxVars2(t *testing.T) {
@@ -67,10 +67,33 @@ func TestFluxVarsUpdate(t *testing.T) {
 	ss := NewFluxSession()
 
 	r := &TOPT{}
-	ss.From("testBucket").Static().Filter("(r) => (r.c2 > 0)", "drop").Update(r)
+	ss.From("testBucket").Static().Filter("(r) => (r.c2 > 0)", "drop").Update([]string{"*"}, r)
+	ss.dbg = true
 	if err := ss.ExecuteQuery(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 
 	t.Log(ss.QueryString())
+}
+
+func TestInsert(t *testing.T) {
+	initialAPIOnce.Do(initializeAPI)
+
+	ss := NewFluxSession()
+
+	st := &Student{
+		Person: Person{
+			Name: "sean",
+			Age:  4,
+			Sex:  "male",
+		},
+		Class: "5",
+		Grade: 0.93,
+	}
+
+	err := ss.Insert(st)
+
+	if err != nil {
+		t.Fatal(err)
+	}
 }

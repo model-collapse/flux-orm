@@ -32,14 +32,25 @@ func (m *Model) Buckets() string {
 	panic(errors.New("Cannot use raw model struct in IO"))
 }
 
+func (m *Model) SetTime(t time.Time) {
+	m.Time = t
+}
+
 func getModelObj(val reflect.Value, tp reflect.Type) (ret Model, suc bool) {
 	for i := 0; i < tp.NumField(); i++ {
 		fld := val.Field(i)
 		tfld := tp.Field(i)
 
-		if tfld.Anonymous && tfld.Type == reflect.TypeOf(Model{}) {
-			ret = fld.Interface().(Model)
-			suc = true
+		if tfld.Anonymous && tfld.Type.Kind() == reflect.Struct {
+			if tfld.Type == reflect.TypeOf(Model{}) {
+				ret = fld.Interface().(Model)
+				suc = true
+			} else {
+				ret, suc = getModelObj(fld, tfld.Type)
+				if suc {
+					return
+				}
+			}
 		}
 	}
 
@@ -80,12 +91,17 @@ func modelToInsertString(m InfluxModel) (ret string, reterr error) {
 			if f.strValue == "" {
 				vals = append(vals, fmt.Sprintf("%s=%f", f.name, f.floatValue))
 			} else {
-				vals = append(vals, fmt.Sprintf("%s=%s", f.name, f.strValue))
+				vals = append(vals, fmt.Sprintf("%s=\"%s\"", f.name, f.strValue))
 			}
 		}
 	}
 
 	measurement := m.Measurement()
-	ret = fmt.Sprintf("%s,%s %s %d", measurement, strings.Join(keys, ","), strings.Join(vals, ","), md.Time.UnixNano())
+	timeStamp := md.Time.UnixNano()
+	if timeStamp < 0 {
+		timeStamp = 0
+	}
+
+	ret = fmt.Sprintf("%s,%s %s %d", measurement, strings.Join(keys, ","), strings.Join(vals, ","), timeStamp)
 	return
 }
