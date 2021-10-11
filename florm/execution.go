@@ -9,16 +9,23 @@ import (
 	"log"
 	"reflect"
 	"strings"
+	"time"
 
+	"github.com/influxdata/influxdb-client-go/v2/api"
 	"github.com/influxdata/influxdb-client-go/v2/api/query"
 )
 
 const YieldBufSize = 100
 
+var ErrInvalidInput = errors.New("the input should be InfluxModel or a slice / channle of InfluxModel")
+var ErrSeriesNotSupported = errors.New("delete by id can not be used in series data model, please use other delete api")
+var ErrSeriesNotFound = errors.New("with IsSeries=true, we cannot find any presence of Series struct in the data model")
+var ErrEmptySlice = errors.New("slice for insertion is empty")
+
 type YieldFunc func(r *query.FluxRecord)
 
 func (ss *FluxSession) buildYields() string {
-	buf := bytes.NewBuffer(make([]byte, YieldBufSize))
+	buf := bytes.NewBuffer(nil)
 
 	for i, out := range ss.outputs {
 		name := out.stream.Name()
@@ -54,8 +61,10 @@ func getUpdateFields(v interface{}, mp map[string]interface{}, replaceValue bool
 
 				if replaceValue {
 					switch ff := v.(type) {
-					case float32, float64, int32, int64, int:
-						nf.floatValue, reterr = interfaceToFloat(v)
+					case float32, float64:
+						nf.floatValue = reflect.ValueOf(v).Float()
+					case int8, int32, int64, int, uint, uint8, uint32, uint16:
+						nf.intValue = reflect.ValueOf(v).Int()
 					case string:
 						nf.strValue = ff
 					default:
@@ -90,7 +99,7 @@ func (ss *FluxSession) buildUpdateClause() (string, error) {
 
 	name := ss.update.stream.Name()
 
-	buf := bytes.NewBuffer(make([]byte, YieldBufSize))
+	buf := bytes.NewBuffer(nil)
 	fmt.Fprintf(buf, "%s\n", name)
 	fmt.Fprintf(buf, updatePivotClause)
 	fmt.Fprintf(buf, "\n")
@@ -104,11 +113,7 @@ func (ss *FluxSession) buildUpdateClause() (string, error) {
 	var valCols []string
 	for _, f := range flds {
 		if f.tp == ValueField {
-			if f.strValue == "" {
-				fmt.Fprintf(buf, "|> set(\"%s\", %f)\n", f.name, f.floatValue)
-			} else {
-				fmt.Fprintf(buf, "|> set(\"%s\", \"%s\")\n", f.name, f.strValue)
-			}
+			fmt.Fprintf(buf, "|> set(\"%s\", %s)\n", f.name, f.ValueString(true))
 			valCols = append(valCols, f.name)
 		} else if f.tp == KeyField {
 			tagCols = append(tagCols, f.name)
@@ -131,7 +136,7 @@ func (ss *FluxSession) buildUpdateClause() (string, error) {
 }
 
 func (ss *FluxSession) buildUpdates() (string, error) {
-	buf := bytes.NewBuffer(make([]byte, YieldBufSize))
+	buf := bytes.NewBuffer(nil)
 
 	if up := ss.update; up != nil {
 		cl, err := ss.buildUpdateClause()
@@ -149,7 +154,8 @@ func (ss *FluxSession) buildYieldProgram() (ret map[string]YieldFunc) {
 	ret = make(map[string]YieldFunc)
 
 	for i, o := range ss.outputs {
-		v := reflect.ValueOf(o.output)
+		outInterface := o.output
+		v := reflect.ValueOf(outInterface)
 		if v.Kind() != reflect.Ptr {
 			panic(errors.New("the yield receiver should be a ptr"))
 		}
@@ -172,10 +178,16 @@ func (ss *FluxSession) buildYieldProgram() (ret map[string]YieldFunc) {
 				} else {
 					v = reflect.Append(v, n.Elem())
 				}
+
+				log.Print(v.Kind().String())
+				reflect.ValueOf(outInterface).Elem().Set(v)
 			}
 		} else if v.Kind() == reflect.Struct {
+			etp := v.Type()
 			fnc = func(r *query.FluxRecord) {
-				assignRecordToStruct(r, v)
+				vv := reflect.New(etp)
+				assignRecordToStruct(r, vv.Elem())
+				reflect.ValueOf(outInterface).Set(vv)
 			}
 		}
 
@@ -190,7 +202,7 @@ func (ss *FluxSession) ExecuteQuery(ctx context.Context) error {
 	script := ss.QueryString()
 
 	if len(ss.outputs) > 0 {
-		script += "\n\n" + ss.buildYields()
+		script = fmt.Sprintf("%s\n\n%s", script, ss.buildYields())
 	}
 
 	if ss.update != nil {
@@ -201,8 +213,6 @@ func (ss *FluxSession) ExecuteQuery(ctx context.Context) error {
 
 		script += "\n\n" + q
 	}
-
-	log.Printf(script)
 
 	if ss.dbg {
 		return nil
@@ -224,6 +234,7 @@ func (ss *FluxSession) ExecuteQuery(ctx context.Context) error {
 	for result.Next() {
 		if result.TableChanged() {
 			yid = getYieldIDFromMeta(result.TableMetadata())
+			log.Printf("id = %s", yid)
 			fn = fncs[yid]
 		}
 
@@ -233,16 +244,123 @@ func (ss *FluxSession) ExecuteQuery(ctx context.Context) error {
 	return nil
 }
 
-func (ss *FluxSession) Insert(m InfluxModel) error {
-	script, err := modelToInsertString(m)
-	log.Printf(script)
-	if err != nil {
-		return err
+func (ss *FluxSession) Insert(v interface{}) error {
+	var target []InfluxModel
+	var bucket string
+	modelStub := reflect.TypeOf((*InfluxModel)(nil)).Elem()
+
+	userChan := false
+	var chanIn reflect.Value
+
+	if m, suc := v.(InfluxModel); suc {
+		target = []InfluxModel{m}
+		bucket = target[0].Bucket()
+	} else {
+		vv := reflect.ValueOf(v)
+		if vv.Kind() == reflect.Ptr {
+			vv = vv.Elem()
+		}
+
+		if vv.Kind() == reflect.Slice {
+			target = make([]InfluxModel, 0, vv.Len())
+			for i := 0; i < vv.Len(); i++ {
+				vvv := vv.Index(i)
+				if mm, suc := vvv.Interface().(InfluxModel); suc {
+					target = append(target, mm)
+				} else {
+					return ErrInvalidInput
+				}
+			}
+
+			if vv.Len() == 0 {
+				return ErrEmptySlice
+			} else {
+				bucket = target[0].Bucket()
+			}
+		} else if vv.Kind() == reflect.Chan {
+			if !vv.Type().Elem().ConvertibleTo(modelStub) {
+				return ErrInvalidInput
+			}
+
+			userChan = true
+			chanIn = vv
+		} else {
+			return ErrInvalidInput
+		}
 	}
 
-	api := ss.mgr.WriteAPI(m.Bucket())
-	defer api.Flush()
-	api.WriteRecord(script)
+	var wApi api.WriteAPI
+	if bucket != "" {
+		wApi = ss.mgr.WriteAPI(bucket)
+	}
+
+	// when instant flush needed, the api will be flushed after record written
+	if ss.mgr.NeedInstantFlush() {
+		defer wApi.Flush()
+	}
+
+	if userChan {
+		m, suc := chanIn.Recv()
+		for suc {
+			mm := m.Interface().(InfluxModel)
+			if mm == nil {
+				continue
+			}
+
+			if bucket == "" {
+				bucket = mm.Bucket()
+				wApi = ss.mgr.WriteAPI(bucket)
+			}
+
+			script, err := modelToInsertString(mm)
+			log.Printf(script)
+			if err != nil {
+				return err
+			}
+
+			wApi.WriteRecord(script)
+			m, suc = chanIn.Recv()
+		}
+	} else {
+		for _, m := range target {
+			script, err := modelToInsertString(m)
+			log.Printf(script)
+			if err != nil {
+				return err
+			}
+
+			wApi.WriteRecord(script)
+		}
+	}
+
+	return nil
+}
+
+func (ss *FluxSession) Delete(ctx context.Context, m InfluxModel, ids ...uint64) error {
+	dapi := ss.mgr.DeleteAPI(m.Bucket())
+
+	if m.IsSeries() {
+		return ErrSeriesNotSupported
+	}
+
+	dapi.DeleteWithName(ctx, ss.mgr.Org(), m.Bucket(), time.Unix(0, 0), time.Unix(0, 1), idSetToFilter(m.Measurement(), ids))
+	return nil
+}
+
+func (ss *FluxSession) DeleteWithFilter(ctx context.Context, m InfluxModel, fn string) error {
+	dapi := ss.mgr.DeleteAPI(m.Bucket())
+
+	if m.IsSeries() {
+		srs, suc := findSeriesObj(reflect.ValueOf(m), reflect.TypeOf(m))
+		if !suc {
+			return ErrSeriesNotFound
+		}
+
+		dapi.DeleteWithName(ctx, ss.mgr.Org(), m.Bucket(), srs.Start, srs.Stop, fn)
+	} else {
+		dapi.DeleteWithName(ctx, ss.mgr.Org(), m.Bucket(), time.Unix(0, 0), time.Unix(0, 1), fn)
+	}
+
 	return nil
 }
 

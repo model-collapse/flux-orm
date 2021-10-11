@@ -12,11 +12,20 @@ type APIManager interface {
 	QueryAPI(buckets []string) api.QueryAPI
 	UpdateAPI(bucket string) api.QueryAPI
 	WriteAPI(bucket string) api.WriteAPI
+	DeleteAPI(bucket string) api.DeleteAPI
+	Org() string
+
+	// When NeedInstantFlush is true, any writeAPI operation (e.g. Insert)
+	// will be flushed after WriteRecord is called. This is required when
+	// LordAPIManager.WriteAPI instantly create the api when called and
+	// maintain no cache, because the api will be deprecated after the insert call.
+	NeedInstantFlush() bool
 }
 
 type LordAPIManager struct {
 	client influxdb2.Client
 	qAPI   api.QueryAPI
+	dAPI   api.DeleteAPI
 	org    string
 }
 
@@ -24,6 +33,7 @@ func NewLordAPIManager(client influxdb2.Client, org string) *LordAPIManager {
 	ret := &LordAPIManager{
 		client: client,
 		qAPI:   client.QueryAPI(org),
+		dAPI:   client.DeleteAPI(),
 		org:    org,
 	}
 
@@ -47,4 +57,16 @@ func (l *LordAPIManager) WriteAPI(bucket string) api.WriteAPI {
 		},
 	)
 	return ret
+}
+
+func (l *LordAPIManager) NeedInstantFlush() bool {
+	return true
+}
+
+func (l *LordAPIManager) DeleteAPI(bucket string) api.DeleteAPI {
+	return l.dAPI
+}
+
+func (l *LordAPIManager) Org() string {
+	return l.org
 }

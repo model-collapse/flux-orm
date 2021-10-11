@@ -6,6 +6,8 @@ import (
 	"strings"
 )
 
+var ErrDoubleModel = errors.New("the Model clause can only be used in a single branch update script, multiple model clause will be invalid")
+
 type SessionOutput struct {
 	stream FluxStream
 	output interface{}
@@ -46,9 +48,13 @@ func NewFluxSessionCustomAPI(mgr APIManager) *FluxSession {
 	}
 }
 
-func (f *FluxSession) Model(m interface{}) *FluxSession {
+func (f *FluxSession) Model(m InfluxModel) FluxStream {
+	if f.model != nil {
+		panic(ErrDoubleModel)
+	}
+
 	f.model = m
-	return f
+	return f.From(m.Bucket())
 }
 
 func (f *FluxSession) popVarName() string {
@@ -190,7 +196,7 @@ func buildFluxVars(ss *FluxSession, s FluxStream) {
 
 		ss.addToMaster(s.Statement())
 		if s.GetOp() == OpFrom {
-			_, bkt := parseParam(sf.params[0])
+			_, bkt, _ := parseParam(sf.params[0])
 			ss.buckets = append(ss.buckets, bkt)
 		}
 	} else if sff, suc := s.(*FluxMultiplePipe); suc {

@@ -1,6 +1,8 @@
 package florm
 
 import (
+	"context"
+	"encoding/json"
 	"sync"
 	"testing"
 
@@ -19,10 +21,46 @@ func initializeAPI() {
 func TestStaticGet(t *testing.T) {
 	initialAPIOnce.Do(initializeAPI)
 
+	var res []Student
 	ss := NewFluxSession()
-	ss.From("misc2")
+	ss.From("misc2").Static().Pivot().Yield(&res)
+	if err := ss.ExecuteQuery(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(res) == 0 {
+		t.Fatalf("zero result received")
+	}
+
+	d, _ := json.Marshal(&res)
+	t.Log(string(d))
 }
 
 func TestUpdate(t *testing.T) {
 
+}
+
+func TestInsert(t *testing.T) {
+	initialAPIOnce.Do(initializeAPI)
+
+	ss := NewFluxSession()
+
+	st := &Student{
+		Person: Person{
+			Table: Table{
+				ID: 1,
+			},
+			Name: "sean",
+			Age:  4,
+			Sex:  "male",
+		},
+		Class: "5",
+		Grade: 0.93,
+	}
+
+	err := ss.Insert(st)
+
+	if err != nil {
+		t.Fatal(err)
+	}
 }

@@ -5,6 +5,7 @@ go 1.15
 require (
 	github.com/cpuguy83/go-md2man/v2 v2.0.1 // indirect
 	github.com/go-delve/delve v1.7.1 // indirect
+	github.com/godruoyi/go-snowflake v0.0.2-alpha
 	github.com/influxdata/influxdb-client-go v1.4.0
 	github.com/influxdata/influxdb-client-go/v2 v2.5.0
 	github.com/mattn/go-colorable v0.1.8 // indirect

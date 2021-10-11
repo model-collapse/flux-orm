@@ -264,7 +264,8 @@ type FluxOperatable interface {
 
 	Keys(column string) FluxStream
 	KeyValues(columns []string) FluxStream
-	Pivot(rowKey []string, colKey []string, valCol string) FluxStream
+	Pivot() FluxStream
+	PivotC(rowKey []string, colKey []string, valCol string) FluxStream
 
 	// Schema
 	Columns(column string) FluxStream

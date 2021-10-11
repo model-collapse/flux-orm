@@ -35,8 +35,8 @@ func (f *FluxSinglePipe) GetOp() FluxOp {
 }
 
 func (f *FluxSinglePipe) Yield(dst interface{}) FluxStream {
-	if !isInfluxModel(dst) {
-		panic(errors.New("the yield model should be a InfluxModel"))
+	if err := checkYieldReceiver(dst); err != nil {
+		panic(err)
 	}
 
 	f.AddRef()
@@ -95,6 +95,10 @@ func (f *FluxMultiplePipe) GetOp() FluxOp {
 }
 
 func (f *FluxMultiplePipe) Yield(dst interface{}) FluxStream {
+	if err := checkYieldReceiver(dst); err != nil {
+		panic(err)
+	}
+
 	f.AddRef()
 	f.session.registerOutput(f, dst)
 	return f

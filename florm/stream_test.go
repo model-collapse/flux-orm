@@ -7,6 +7,7 @@ import (
 )
 
 type TOPT struct {
+	Table
 	F string `florm:"k,f"`
 	S string `florm:"v,g"`
 }
@@ -74,26 +75,4 @@ func TestFluxVarsUpdate(t *testing.T) {
 	}
 
 	t.Log(ss.QueryString())
-}
-
-func TestInsert(t *testing.T) {
-	initialAPIOnce.Do(initializeAPI)
-
-	ss := NewFluxSession()
-
-	st := &Student{
-		Person: Person{
-			Name: "sean",
-			Age:  4,
-			Sex:  "male",
-		},
-		Class: "5",
-		Grade: 0.93,
-	}
-
-	err := ss.Insert(st)
-
-	if err != nil {
-		t.Fatal(err)
-	}
 }

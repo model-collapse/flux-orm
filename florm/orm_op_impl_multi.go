@@ -214,8 +214,12 @@ func (s *FluxMultiplePipe) KeyValues(columns []string) FluxStream {
 	return KeyValues(s, columns)
 }
 
-func (s *FluxMultiplePipe) Pivot(rowKey []string, colKey []string, valCol string) FluxStream {
-	return Pivot(s, rowKey, colKey, valCol)
+func (s *FluxMultiplePipe) Pivot() FluxStream {
+	return Pivot(s)
+}
+
+func (s *FluxMultiplePipe) PivotC(rowKey []string, colKey []string, valCol string) FluxStream {
+	return PivotC(s, rowKey, colKey, valCol)
 }
 
 // Schema

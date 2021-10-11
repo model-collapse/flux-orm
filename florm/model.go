@@ -6,11 +6,14 @@ import (
 	"reflect"
 	"strings"
 	"time"
+
+	sfk "github.com/godruoyi/go-snowflake"
 )
 
 type InfluxModel interface {
 	Measurement() string
 	Bucket() string
+	IsSeries() bool
 }
 
 func isInfluxModel(v interface{}) bool {
@@ -18,35 +21,81 @@ func isInfluxModel(v interface{}) bool {
 	return suc
 }
 
-type Model struct {
+type Series struct {
 	Time  time.Time `florm:"t,time"`
 	Start time.Time `florm:"t,start"`
 	Stop  time.Time `florm:"t,stop"`
 }
 
-func (m *Model) Measurement() string {
+func (m *Series) Measurement() string {
 	panic(errors.New("Cannot use raw model struct in IO"))
 }
 
-func (m *Model) Buckets() string {
+func (m *Series) Buckets() string {
 	panic(errors.New("Cannot use raw model struct in IO"))
 }
 
-func (m *Model) SetTime(t time.Time) {
+func (m *Series) IsSeries() bool {
+	return true
+}
+
+func (m *Series) SetTime(t time.Time) {
 	m.Time = t
 }
 
-func getModelObj(val reflect.Value, tp reflect.Type) (ret Model, suc bool) {
+func findSeriesObj(val reflect.Value, tp reflect.Type) (ret Series, suc bool) {
 	for i := 0; i < tp.NumField(); i++ {
 		fld := val.Field(i)
 		tfld := tp.Field(i)
 
 		if tfld.Anonymous && tfld.Type.Kind() == reflect.Struct {
-			if tfld.Type == reflect.TypeOf(Model{}) {
-				ret = fld.Interface().(Model)
+			if tfld.Type == reflect.TypeOf(Series{}) {
+				ret = fld.Interface().(Series)
 				suc = true
 			} else {
-				ret, suc = getModelObj(fld, tfld.Type)
+				ret, suc = findSeriesObj(fld, tfld.Type)
+				if suc {
+					return
+				}
+			}
+		}
+	}
+
+	return
+}
+
+type Table struct {
+	ID uint64 `florm:"k,primary"`
+}
+
+func (m *Table) Measurement() string {
+	panic(errors.New("Cannot use raw model struct in IO"))
+}
+
+func (m *Table) Buckets() string {
+	panic(errors.New("Cannot use raw model struct in IO"))
+}
+
+func (m *Table) IsSeries() bool {
+	return false
+}
+
+func (m *Table) Snowflake() uint64 {
+	m.ID = sfk.ID()
+	return m.ID
+}
+
+func findTableObj(val reflect.Value, tp reflect.Type) (ret Table, suc bool) {
+	for i := 0; i < tp.NumField(); i++ {
+		fld := val.Field(i)
+		tfld := tp.Field(i)
+
+		if tfld.Anonymous && tfld.Type.Kind() == reflect.Struct {
+			if tfld.Type == reflect.TypeOf(Table{}) {
+				ret = fld.Interface().(Table)
+				suc = true
+			} else {
+				ret, suc = findTableObj(fld, tfld.Type)
 				if suc {
 					return
 				}
@@ -70,10 +119,17 @@ func modelToInsertString(m InfluxModel) (ret string, reterr error) {
 		return
 	}
 
-	md, suc := getModelObj(val, tp)
+	var timeStamp int64
+	md, suc := findSeriesObj(val, tp)
 	if !suc {
-		reterr = errors.New("input should be a composed with a model")
-		return
+		if _, suc := findTableObj(val, tp); suc {
+			timeStamp = 0
+		} else {
+			reterr = errors.New("input should be a composed with a model")
+			return
+		}
+	} else {
+		timeStamp = md.Time.UnixNano()
 	}
 
 	flds, err := recurseFluxFlieds(val)
@@ -86,18 +142,13 @@ func modelToInsertString(m InfluxModel) (ret string, reterr error) {
 	var vals []string
 	for _, f := range flds {
 		if f.tp == KeyField {
-			keys = append(keys, fmt.Sprintf("%s=%s", f.name, f.strValue))
+			keys = append(keys, fmt.Sprintf("%s=%s", f.name, f.ValueString(false)))
 		} else if f.tp == ValueField {
-			if f.strValue == "" {
-				vals = append(vals, fmt.Sprintf("%s=%f", f.name, f.floatValue))
-			} else {
-				vals = append(vals, fmt.Sprintf("%s=\"%s\"", f.name, f.strValue))
-			}
+			vals = append(vals, fmt.Sprintf("%s=%s", f.name, f.ValueString(true)))
 		}
 	}
 
 	measurement := m.Measurement()
-	timeStamp := md.Time.UnixNano()
 	if timeStamp < 0 {
 		timeStamp = 0
 	}

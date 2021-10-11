@@ -549,11 +549,20 @@ func KeyValues(in FluxStream, columns []string) FluxStream {
 	}
 }
 
-func Pivot(in FluxStream, rowKey []string, colKey []string, valCol string) FluxStream {
+func Pivot(in FluxStream) FluxStream {
 	return &FluxSinglePipe{
 		in:      in,
 		session: in.Session(),
-		op:      OpKeys,
+		op:      OpPivot,
+		params:  []string{fkvSJ("rowKey", []string{"_time"}), fkvSJ("columnKey", []string{"_field"}), fkvSq("valueColumn", "_value")},
+	}
+}
+
+func PivotC(in FluxStream, rowKey []string, colKey []string, valCol string) FluxStream {
+	return &FluxSinglePipe{
+		in:      in,
+		session: in.Session(),
+		op:      OpPivot,
 		params:  []string{fkvSJ("rowKey", rowKey), fkvSJ("columnKey", colKey), fkvSq("valueColumn", valCol)},
 	}
 }
