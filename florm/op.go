@@ -27,6 +27,7 @@ const (
 
 	// Edit
 	OpSet
+	OpSetString
 
 	// Aggregation
 	OpMean
@@ -56,6 +57,7 @@ const (
 	OpKeys
 	OpKeyValues
 	OpPivot
+	OpDistinct
 
 	// Schema
 	OpColumns
@@ -111,7 +113,8 @@ var opToStr = map[FluxOp]string{
 	OpTruncateTimeColumn: "truncateTimeColumn",
 
 	// Edit
-	OpSet: "set",
+	OpSetString: "set",
+	OpSet:       "experimental.set",
 
 	// Aggregation
 	OpMean:              "mean",
@@ -141,6 +144,7 @@ var opToStr = map[FluxOp]string{
 	OpKeys:      "keys",
 	OpKeyValues: "keyValues",
 	OpPivot:     "pivot",
+	OpDistinct:  "distinct",
 
 	// Schema
 	OpColumns:   "columns",
@@ -262,7 +266,8 @@ type FluxOperatable interface {
 	GroupBy(by []string) FluxStream
 	GroupExcept(exc []string) FluxStream
 
-	Keys(column string) FluxStream
+	KeysCol(column string) FluxStream
+	Keys() FluxStream
 	KeyValues(columns []string) FluxStream
 	Pivot() FluxStream
 	PivotC(rowKey []string, colKey []string, valCol string) FluxStream
@@ -273,6 +278,8 @@ type FluxOperatable interface {
 	Drop(columns []string) FluxStream
 	Duplicate(column string, as string) FluxStream
 	Rename(column string, as string) FluxStream
+	Distinct() FluxStream
+	DistinctCol(col string) FluxStream
 
 	// Series Op
 	ChandeMomentumOscillator(n int, columns []string) FluxStream
@@ -299,3 +306,5 @@ type FluxOperatable interface {
 	// Sort
 	Sort(columns []string, desc bool) FluxStream
 }
+
+var OpImport = map[int]string{}

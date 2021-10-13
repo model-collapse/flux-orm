@@ -128,7 +128,7 @@ func TestParseParam(t *testing.T) {
 //--------------------Field Process----------------------
 
 type Person struct {
-	Table
+	STable
 	Name string `florm:"k,name"`
 	Age  int    `florm:"v,age"`
 	Sex  string `florm:"v,sex"`
@@ -217,10 +217,10 @@ func assert(t *testing.T, name string, a, b interface{}) {
 func TestRecurseFluxFlieds(t *testing.T) {
 	s := &Student{
 		Person: Person{
-			Table: Table{ID: 19},
-			Name:  "agnes",
-			Age:   10,
-			Sex:   "female",
+			STable: STable{ID: 19},
+			Name:   "agnes",
+			Age:    10,
+			Sex:    "female",
 		},
 		Grade: 0.9,
 		Class: "star",

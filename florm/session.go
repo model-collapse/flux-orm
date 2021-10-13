@@ -1,6 +1,7 @@
 package florm
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"strings"
@@ -30,6 +31,7 @@ type FluxSession struct {
 	c       int
 	mgr     APIManager
 	model   interface{}
+	imports []string
 
 	dbg bool
 }
@@ -209,6 +211,21 @@ func buildFluxVars(ss *FluxSession, s FluxStream) {
 
 		ss.addToMaster(s.Statement())
 	}
+}
+
+func (f *FluxSession) buildImports() string {
+	if len(f.imports) == 0 {
+		return ""
+	}
+
+	buf := bytes.NewBuffer(nil)
+	dd := strDedup(f.imports)
+	for _, ii := range dd {
+		fmt.Fprintf(buf, "import \"%s\"", ii)
+	}
+
+	fmt.Fprintln(buf)
+	return buf.String()
 }
 
 func varsToFluxLang(vars map[string][]string, varseq []string) string {

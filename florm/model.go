@@ -22,9 +22,9 @@ func isInfluxModel(v interface{}) bool {
 }
 
 type Series struct {
-	Time  time.Time `florm:"t,time"`
-	Start time.Time `florm:"t,start"`
-	Stop  time.Time `florm:"t,stop"`
+	Time  time.Time `florm:"t,_time"`
+	Start time.Time `florm:"t,_start"`
+	Stop  time.Time `florm:"t,_stop"`
 }
 
 func (m *Series) Measurement() string {
@@ -64,38 +64,39 @@ func findSeriesObj(val reflect.Value, tp reflect.Type) (ret Series, suc bool) {
 	return
 }
 
-type Table struct {
+type STable struct {
 	ID uint64 `florm:"k,primary"`
 }
 
-func (m *Table) Measurement() string {
+func (m *STable) Measurement() string {
 	panic(errors.New("Cannot use raw model struct in IO"))
 }
 
-func (m *Table) Buckets() string {
+func (m *STable) Buckets() string {
 	panic(errors.New("Cannot use raw model struct in IO"))
 }
 
-func (m *Table) IsSeries() bool {
+func (m *STable) IsSeries() bool {
 	return false
 }
 
-func (m *Table) Snowflake() uint64 {
+func (m *STable) Snowflake() uint64 {
 	m.ID = sfk.ID()
+
 	return m.ID
 }
 
-func findTableObj(val reflect.Value, tp reflect.Type) (ret Table, suc bool) {
+func findSTableObj(val reflect.Value, tp reflect.Type) (ret STable, suc bool) {
 	for i := 0; i < tp.NumField(); i++ {
 		fld := val.Field(i)
 		tfld := tp.Field(i)
 
 		if tfld.Anonymous && tfld.Type.Kind() == reflect.Struct {
-			if tfld.Type == reflect.TypeOf(Table{}) {
-				ret = fld.Interface().(Table)
+			if tfld.Type == reflect.TypeOf(STable{}) {
+				ret = fld.Interface().(STable)
 				suc = true
 			} else {
-				ret, suc = findTableObj(fld, tfld.Type)
+				ret, suc = findSTableObj(fld, tfld.Type)
 				if suc {
 					return
 				}
@@ -104,6 +105,19 @@ func findTableObj(val reflect.Value, tp reflect.Type) (ret Table, suc bool) {
 	}
 
 	return
+}
+
+type DTable struct {
+	Series
+	ID uint64 `florm:"k,primary"`
+}
+
+func (m *DTable) Snowflake() uint64 {
+	m.ID = sfk.ID()
+	sid := sfk.ParseID(m.ID)
+	m.Time = sid.GenerateTime()
+
+	return m.ID
 }
 
 func modelToInsertString(m InfluxModel) (ret string, reterr error) {
@@ -122,7 +136,7 @@ func modelToInsertString(m InfluxModel) (ret string, reterr error) {
 	var timeStamp int64
 	md, suc := findSeriesObj(val, tp)
 	if !suc {
-		if _, suc := findTableObj(val, tp); suc {
+		if _, suc := findSTableObj(val, tp); suc {
 			timeStamp = 0
 		} else {
 			reterr = errors.New("input should be a composed with a model")

@@ -10,7 +10,7 @@ import (
 
 type APIManager interface {
 	QueryAPI(buckets []string) api.QueryAPI
-	UpdateAPI(bucket string) api.QueryAPI
+	UpdateAPI(bucketsToRead []string, bucketToWrite string) api.QueryAPI
 	WriteAPI(bucket string) api.WriteAPI
 	DeleteAPI(bucket string) api.DeleteAPI
 	Org() string
@@ -44,7 +44,7 @@ func (l *LordAPIManager) QueryAPI(buckets []string) api.QueryAPI {
 	return l.qAPI
 }
 
-func (l *LordAPIManager) UpdateAPI(bucket string) api.QueryAPI {
+func (l *LordAPIManager) UpdateAPI(bucketsToRead []string, bucketToWrite string) api.QueryAPI {
 	return l.qAPI
 }
 
@@ -56,6 +56,7 @@ func (l *LordAPIManager) WriteAPI(bucket string) api.WriteAPI {
 			return true
 		},
 	)
+
 	return ret
 }
 

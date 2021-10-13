@@ -36,8 +36,32 @@ func TestStaticGet(t *testing.T) {
 	t.Log(string(d))
 }
 
-func TestUpdate(t *testing.T) {
+func TestStaticGetWithPtr(t *testing.T) {
+	initialAPIOnce.Do(initializeAPI)
 
+	var res []*Student
+	ss := NewFluxSession()
+	ss.From("misc2").Static().Pivot().Yield(&res)
+	if err := ss.ExecuteQuery(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(res) == 0 {
+		t.Fatalf("zero result received")
+	}
+
+	d, _ := json.Marshal(&res)
+	t.Log(string(d))
+}
+
+func TestUpdate(t *testing.T) {
+	initialAPIOnce.Do(initializeAPI)
+	ss := NewFluxSession()
+	ss.From("misc2").Static().Filter(`(r)=>(r._measurement=="students" and r.name=="Ag")`, "drop").Update([]string{"grade"}, &Student{Grade: 1.1})
+
+	if err := ss.ExecuteQuery(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestInsert(t *testing.T) {
@@ -47,7 +71,7 @@ func TestInsert(t *testing.T) {
 
 	st := &Student{
 		Person: Person{
-			Table: Table{
+			STable: STable{
 				ID: 1,
 			},
 			Name: "sean",

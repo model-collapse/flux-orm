@@ -186,7 +186,7 @@ func Set(in FluxStream, key string, val string) FluxStream {
 	return &FluxSinglePipe{
 		in:      in,
 		session: in.Session(),
-		op:      OpSet,
+		op:      OpSetString,
 		params:  []string{fkvSq("key", key), fkvSq("value", val)},
 	}
 }
@@ -529,7 +529,17 @@ func GroupExcept(in FluxStream, exc []string) FluxStream {
 	}
 }
 
-func Keys(in FluxStream, column string) FluxStream {
+func Keys(in FluxStream) FluxStream {
+	in.AddRef()
+	return &FluxSinglePipe{
+		in:      in,
+		session: in.Session(),
+		op:      OpKeys,
+		params:  []string{},
+	}
+}
+
+func KeysCol(in FluxStream, column string) FluxStream {
 	in.AddRef()
 	return &FluxSinglePipe{
 		in:      in,
@@ -546,6 +556,26 @@ func KeyValues(in FluxStream, columns []string) FluxStream {
 		session: in.Session(),
 		op:      OpKeys,
 		params:  []string{fkvSJ("keyColumns", columns)},
+	}
+}
+
+func DistinctCol(in FluxStream, column string) FluxStream {
+	in.AddRef()
+	return &FluxSinglePipe{
+		in:      in,
+		session: in.Session(),
+		op:      OpDistinct,
+		params:  []string{fkvSq("column", column)},
+	}
+}
+
+func Distinct(in FluxStream) FluxStream {
+	in.AddRef()
+	return &FluxSinglePipe{
+		in:      in,
+		session: in.Session(),
+		op:      OpDistinct,
+		params:  []string{},
 	}
 }
 

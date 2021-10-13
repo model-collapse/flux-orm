@@ -206,12 +206,24 @@ func (s *FluxMultiplePipe) GroupExcept(exc []string) FluxStream {
 	return GroupExcept(s, exc)
 }
 
-func (s *FluxMultiplePipe) Keys(column string) FluxStream {
-	return Keys(s, column)
+func (s *FluxMultiplePipe) Keys() FluxStream {
+	return Keys(s)
+}
+
+func (s *FluxMultiplePipe) KeysCol(column string) FluxStream {
+	return KeysCol(s, column)
 }
 
 func (s *FluxMultiplePipe) KeyValues(columns []string) FluxStream {
 	return KeyValues(s, columns)
+}
+
+func (s *FluxMultiplePipe) Distinct() FluxStream {
+	return Distinct(s)
+}
+
+func (s *FluxMultiplePipe) DistinctCol(col string) FluxStream {
+	return DistinctCol(s, col)
 }
 
 func (s *FluxMultiplePipe) Pivot() FluxStream {

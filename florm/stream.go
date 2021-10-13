@@ -50,7 +50,13 @@ func (f *FluxSinglePipe) Update(sel []string, src interface{}) FluxStream {
 	}
 
 	f.AddRef()
-	f.session.registerUpdate(f, sel, src)
+
+	var ff FluxStream = f
+	if f.op != OpPivot {
+		ff = f.Pivot()
+	}
+
+	f.session.registerUpdate(ff, sel, src)
 	return f
 }
 
@@ -105,8 +111,18 @@ func (f *FluxMultiplePipe) Yield(dst interface{}) FluxStream {
 }
 
 func (f *FluxMultiplePipe) Update(sel []string, src interface{}) FluxStream {
+	if !isInfluxModel(src) {
+		panic(errors.New("the update model should be a InfluxModel"))
+	}
+
 	f.AddRef()
-	f.session.registerUpdate(f, sel, src)
+
+	var ff FluxStream = f
+	if f.op != OpPivot {
+		ff = f.Pivot()
+	}
+
+	f.session.registerUpdate(ff, sel, src)
 	return f
 }
 

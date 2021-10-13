@@ -7,7 +7,7 @@ import (
 )
 
 type TOPT struct {
-	Table
+	STable
 	F string `florm:"k,f"`
 	S string `florm:"v,g"`
 }

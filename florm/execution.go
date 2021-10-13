@@ -21,6 +21,7 @@ var ErrInvalidInput = errors.New("the input should be InfluxModel or a slice / c
 var ErrSeriesNotSupported = errors.New("delete by id can not be used in series data model, please use other delete api")
 var ErrSeriesNotFound = errors.New("with IsSeries=true, we cannot find any presence of Series struct in the data model")
 var ErrEmptySlice = errors.New("slice for insertion is empty")
+var ErrNothingToUpdate = errors.New("nothing to update")
 
 type YieldFunc func(r *query.FluxRecord)
 
@@ -36,7 +37,7 @@ func (ss *FluxSession) buildYields() string {
 }
 
 const updatePivotClause = `|> pivot(columnKey: ["_field"], rowKey: ["_time"], valueColumn: "_value")`
-const updateToClause = `|> to(bucket:%s, tagColumns: %s, fieldFn: %s)`
+const updateToClause = `|> to(bucket:"%s", tagColumns: %s, fieldFn: %s)`
 
 func getUpdateFields(v interface{}, mp map[string]interface{}, replaceValue bool) (ret []fluxField, reterr error) {
 	vv := reflect.ValueOf(v)
@@ -101,19 +102,37 @@ func (ss *FluxSession) buildUpdateClause() (string, error) {
 
 	buf := bytes.NewBuffer(nil)
 	fmt.Fprintf(buf, "%s\n", name)
-	fmt.Fprintf(buf, updatePivotClause)
-	fmt.Fprintf(buf, "\n")
 
 	flds, err := getUpdateFields(ss.update.src, ss.update.vals, replace)
 	if err != nil {
 		return "", err
 	}
 
-	var tagCols []string
-	var valCols []string
+	if len(flds) == 0 {
+		return "", ErrNothingToUpdate
+	}
+
+	ss.imports = append(ss.imports, "experimental")
+
+	var setParams []string
 	for _, f := range flds {
 		if f.tp == ValueField {
-			fmt.Fprintf(buf, "|> set(\"%s\", %s)\n", f.name, f.ValueString(true))
+			p := fmt.Sprintf("%s:%s", f.name, f.ValueString(true))
+			setParams = append(setParams, p)
+		}
+	}
+
+	fmt.Fprintf(buf, "|> experimental.set(o:{%s})\n", strings.Join(setParams, ","))
+
+	var tagCols []string
+	var valCols []string
+	flds, err = recurseFluxFlieds(reflect.ValueOf(ss.update.src))
+	if err != nil {
+		return "", err
+	}
+
+	for _, f := range flds {
+		if f.tp == ValueField {
 			valCols = append(valCols, f.name)
 		} else if f.tp == KeyField {
 			tagCols = append(tagCols, f.name)
@@ -179,7 +198,6 @@ func (ss *FluxSession) buildYieldProgram() (ret map[string]YieldFunc) {
 					v = reflect.Append(v, n.Elem())
 				}
 
-				log.Print(v.Kind().String())
 				reflect.ValueOf(outInterface).Elem().Set(v)
 			}
 		} else if v.Kind() == reflect.Struct {
@@ -214,11 +232,23 @@ func (ss *FluxSession) ExecuteQuery(ctx context.Context) error {
 		script += "\n\n" + q
 	}
 
+	if len(ss.imports) > 0 {
+		script = ss.buildImports() + script
+	}
+
 	if ss.dbg {
 		return nil
 	}
 
-	qApi := ss.mgr.QueryAPI(ss.buckets)
+	log.Printf(script)
+	var qApi api.QueryAPI
+
+	if ss.update != nil {
+		qApi = ss.mgr.UpdateAPI(ss.buckets, ss.update.src.(InfluxModel).Bucket())
+	} else {
+		qApi = ss.mgr.QueryAPI(ss.buckets)
+	}
+
 	result, err := qApi.Query(ctx, script)
 	if err != nil {
 		return err
@@ -234,7 +264,6 @@ func (ss *FluxSession) ExecuteQuery(ctx context.Context) error {
 	for result.Next() {
 		if result.TableChanged() {
 			yid = getYieldIDFromMeta(result.TableMetadata())
-			log.Printf("id = %s", yid)
 			fn = fncs[yid]
 		}
 

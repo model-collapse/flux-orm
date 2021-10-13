@@ -222,6 +222,13 @@ func fillFieldValue(f *fluxField, v reflect.Value) (reterr error) {
 	case reflect.Uint64, reflect.Uint8, reflect.Uint16:
 		f.uintValue = v.Uint()
 		f.valType = FieldTypeUint
+	case reflect.Bool:
+		if v.Bool() {
+			f.intValue = 1
+		} else {
+			f.intValue = 0
+		}
+		f.valType = FieldTypeInt
 	case reflect.String:
 		f.strValue = v.String()
 		f.valType = FieldTypeString
@@ -347,7 +354,7 @@ func assignRecordToStructImpl(r *query.FluxRecord, v reflect.Value) {
 				}()
 
 				if !v.Field(i).CanSet() {
-					log.Printf("WTF?")
+					panic(errors.New("this is impossible"))
 				}
 
 				if vf, suc := val.(float64); suc {
@@ -358,6 +365,8 @@ func assignRecordToStructImpl(r *query.FluxRecord, v reflect.Value) {
 						v.Field(i).SetUint(uint64(vf))
 					case reflect.Float32, reflect.Float64:
 						v.Field(i).SetFloat(vf)
+					case reflect.Bool:
+						v.Field(i).SetBool(vf != 0)
 					}
 				} else if vs, suc := val.(string); suc {
 					if v.Field(i).Kind() == reflect.Struct {
@@ -405,31 +414,4 @@ func DecodeMeta(src string, v interface{}) error {
 	}
 
 	return json.Unmarshal(data, v)
-}
-
-func checkYieldReceiver(v interface{}) error {
-	InfluxModelInterface := reflect.TypeOf((*InfluxModel)(nil)).Elem()
-
-	vv := reflect.ValueOf(v)
-	if vv.Kind() != reflect.Ptr {
-		return errors.New("yield receiver should be a pointer")
-	}
-
-	tp := vv.Type()
-	tpEle := tp.Elem()
-
-	if tpEle.Kind() == reflect.Struct {
-		if !tpEle.ConvertibleTo(InfluxModelInterface) && !reflect.PtrTo(tpEle).ConvertibleTo(InfluxModelInterface) {
-			return errors.New("if yield receiver is a struct, it should be a InfluxModel")
-		}
-	} else if tpEle.Kind() == reflect.Slice {
-		tpEE := tpEle.Elem()
-		if !tpEE.ConvertibleTo(InfluxModelInterface) && !reflect.PtrTo(tpEE).ConvertibleTo(InfluxModelInterface) {
-			return errors.New("if yield receiver is a slice, the elements should be a InfluxModel")
-		}
-	} else {
-		return errors.New("yield receiver should be a pointer to struct or slice")
-	}
-
-	return nil
 }
