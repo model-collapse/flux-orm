@@ -35,6 +35,41 @@ func strDedup(s []string) []string {
 	return ret
 }
 
+func cmpStrArray(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	for i, aa := range a {
+		bb := b[i]
+		if aa != bb {
+			return false
+		}
+	}
+
+	return true
+}
+
+func strInSlice(s string, b []string) bool {
+	for _, ss := range b {
+		if ss == s {
+			return true
+		}
+	}
+
+	return false
+}
+
+func isSubSet(sub, sup []string) bool {
+	for _, s := range sub {
+		if !strInSlice(s, sup) {
+			return false
+		}
+	}
+
+	return true
+}
+
 func fkvS(k, v string) string {
 	return fmt.Sprintf("%s:%s", k, v)
 }
@@ -354,7 +389,7 @@ func assignRecordToStructImpl(r *query.FluxRecord, v reflect.Value) {
 				}()
 
 				if !v.Field(i).CanSet() {
-					panic(errors.New("this is impossible"))
+					panic(fmt.Errorf("field cannot be set: %s | %s | %s", tg.name, fld.Name, fld.Tag))
 				}
 
 				if vf, suc := val.(float64); suc {
@@ -414,4 +449,22 @@ func DecodeMeta(src string, v interface{}) error {
 	}
 
 	return json.Unmarshal(data, v)
+}
+
+func extractTagAndValueCols(v interface{}) (tagCols, valCols []string, reterr error) {
+	flds, err := recurseFluxFlieds(reflect.ValueOf(v))
+	if err != nil {
+		reterr = err
+		return
+	}
+
+	for _, f := range flds {
+		if f.tp == ValueField {
+			valCols = append(valCols, f.name)
+		} else if f.tp == KeyField {
+			tagCols = append(tagCols, f.name)
+		}
+	}
+
+	return
 }

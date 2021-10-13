@@ -9,8 +9,8 @@ func (s *FluxMultiplePipe) Static() FluxStream {
 	return Static(s)
 }
 
-func (s *FluxMultiplePipe) Range(start time.Time, end time.Time) FluxStream {
-	return Range(s, start, end)
+func (s *FluxMultiplePipe) Range(start time.Time, stop time.Time) FluxStream {
+	return Range(s, start, stop)
 }
 
 func (s *FluxMultiplePipe) RangeR(start string) FluxStream {

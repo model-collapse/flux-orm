@@ -72,7 +72,7 @@ func (m *STable) Measurement() string {
 	panic(errors.New("Cannot use raw model struct in IO"))
 }
 
-func (m *STable) Buckets() string {
+func (m *STable) Bucket() string {
 	panic(errors.New("Cannot use raw model struct in IO"))
 }
 

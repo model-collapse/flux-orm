@@ -10,21 +10,6 @@ import (
 )
 
 //--------------------Format Convert---------------------
-func cmpStrArray(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-
-	for i, aa := range a {
-		bb := b[i]
-		if aa != bb {
-			return false
-		}
-	}
-
-	return true
-}
-
 func TestStrDeDedup(t *testing.T) {
 	cases := [][]string{
 		{"a", "a", "g", "k"},

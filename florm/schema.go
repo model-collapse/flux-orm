@@ -9,10 +9,10 @@ import (
 
 const keyReduceFilter = `(r, accumulator) => ({_value:r._value + "," + accumulator._value})`
 const keyReduceIdentity = `{_value:""}`
-const fieldReductFilter = `reduce(fn: (r, accumulator) => ({_value:r._field + "," + accumulator._value}), identity: {_value:""})`
+const fieldReductFilter = `(r, accumulator) => ({_value:r._field + "," + accumulator._value})`
 
-type SchemaPerm struct {
-	perm string `florm:"k,_value"`
+type schemaPerm struct {
+	Perm string `florm:"k,_value"`
 }
 
 type SchemaHelper struct {
@@ -20,7 +20,7 @@ type SchemaHelper struct {
 }
 
 func (s *SchemaHelper) GetTagKeysPerm(bucket, measurement string, start, stop time.Time) (ret [][]string, reterr error) {
-	var perms []SchemaPerm
+	var perms []schemaPerm
 	fn := fmt.Sprintf(`(r) => (r._measurement == "%s")`, measurement)
 	s.ss.From(bucket).Range(start, stop).Filter(fn, "drop").Keys().Reduce(keyReduceFilter, keyReduceIdentity).Keep([]string{"_value"}).Distinct().Yield(&perms)
 
@@ -29,7 +29,7 @@ func (s *SchemaHelper) GetTagKeysPerm(bucket, measurement string, start, stop ti
 	}
 
 	for _, p := range perms {
-		tags := strings.Split(p.perm, ",")
+		tags := strings.Split(p.Perm, ",")
 		ret = append(ret, tags)
 	}
 
@@ -37,7 +37,7 @@ func (s *SchemaHelper) GetTagKeysPerm(bucket, measurement string, start, stop ti
 }
 
 func (s *SchemaHelper) GetTagKeysDistinct(bucket, measurement string, start, stop time.Time) (ret []string, reterr error) {
-	var perms []SchemaPerm
+	var perms []schemaPerm
 	fn := fmt.Sprintf(`(r) => (r._measurement == "%s")`, measurement)
 	s.ss.From(bucket).Range(start, stop).Filter(fn, "drop").Keys().Keep([]string{"_value"}).Distinct().Yield(&perms)
 
@@ -46,23 +46,23 @@ func (s *SchemaHelper) GetTagKeysDistinct(bucket, measurement string, start, sto
 	}
 
 	for _, p := range perms {
-		ret = append(ret, p.perm)
+		ret = append(ret, p.Perm)
 	}
 
 	return
 }
 
 func (s *SchemaHelper) GetFieldsPerm(bucket, measurement string, start, stop time.Time) (ret [][]string, reterr error) {
-	var perms []SchemaPerm
+	var perms []schemaPerm
 	fn := fmt.Sprintf(`(r) => (r._measurement == "%s")`, measurement)
-	s.ss.From(bucket).Range(start, stop).Filter(fn, "drop").Drop([]string{"_time", "_start", "_stop", "_value"}).GroupExcept([]string{"field"}).Reduce(fieldReductFilter, keyReduceIdentity).Keep([]string{"_value"}).Distinct().Yield(&perms)
+	s.ss.From(bucket).Range(start, stop).Filter(fn, "drop").Drop([]string{"_time", "_start", "_stop", "_value"}).GroupExcept([]string{"_field"}).Reduce(fieldReductFilter, keyReduceIdentity).Keep([]string{"_value"}).Distinct().Yield(&perms)
 
 	if reterr = s.ss.ExecuteQuery(context.Background()); reterr != nil {
 		return
 	}
 
 	for _, p := range perms {
-		tags := strings.Split(p.perm, ",")
+		tags := strings.Split(p.Perm, ",")
 		ret = append(ret, tags)
 	}
 
@@ -70,16 +70,16 @@ func (s *SchemaHelper) GetFieldsPerm(bucket, measurement string, start, stop tim
 }
 
 func (s *SchemaHelper) GetFieldsDistinct(bucket, measurement string, start, stop time.Time) (ret []string, reterr error) {
-	var perms []SchemaPerm
+	var perms []schemaPerm
 	fn := fmt.Sprintf(`(r) => (r._measurement == "%s")`, measurement)
-	s.ss.From(bucket).Range(start, stop).Filter(fn, "drop").Keep([]string{"_field"}).Distinct().Yield(&perms)
+	s.ss.From(bucket).Range(start, stop).Filter(fn, "drop").Keep([]string{"_field"}).DistinctCol("_field").Yield(&perms)
 
 	if reterr = s.ss.ExecuteQuery(context.Background()); reterr != nil {
 		return
 	}
 
 	for _, p := range perms {
-		ret = append(ret, p.perm)
+		ret = append(ret, p.Perm)
 	}
 
 	return

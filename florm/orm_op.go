@@ -28,13 +28,13 @@ func Buckets(ss *FluxSession) FluxStream {
 }
 
 // Timewindow
-func Range(in FluxStream, start time.Time, end time.Time) FluxStream {
+func Range(in FluxStream, start time.Time, stop time.Time) FluxStream {
 	in.AddRef()
 	return &FluxSinglePipe{
 		in:      in,
 		session: in.Session(),
 		op:      OpRange,
-		params:  []string{fkvS("start", start.Format(time.RFC3339)), fkvS("end", end.Format(time.RFC3339))},
+		params:  []string{fkvI("start", int(start.UnixNano())), fkvI("stop", int(stop.UnixNano()))},
 	}
 }
 
@@ -515,7 +515,7 @@ func GroupBy(in FluxStream, by []string) FluxStream {
 		in:      in,
 		session: in.Session(),
 		op:      OpGroup,
-		params:  []string{fkvSJ("by", by)},
+		params:  []string{fkvSJ("columns", by), fkvSq("mode", "by")},
 	}
 }
 
@@ -525,7 +525,7 @@ func GroupExcept(in FluxStream, exc []string) FluxStream {
 		in:      in,
 		session: in.Session(),
 		op:      OpGroup,
-		params:  []string{fkvSJ("exec", exc)},
+		params:  []string{fkvSJ("columns", exc), fkvSq("mode", "except")},
 	}
 }
 

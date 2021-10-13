@@ -124,19 +124,9 @@ func (ss *FluxSession) buildUpdateClause() (string, error) {
 
 	fmt.Fprintf(buf, "|> experimental.set(o:{%s})\n", strings.Join(setParams, ","))
 
-	var tagCols []string
-	var valCols []string
-	flds, err = recurseFluxFlieds(reflect.ValueOf(ss.update.src))
+	tagCols, valCols, err := extractTagAndValueCols(ss.update.src)
 	if err != nil {
 		return "", err
-	}
-
-	for _, f := range flds {
-		if f.tp == ValueField {
-			valCols = append(valCols, f.name)
-		} else if f.tp == KeyField {
-			tagCols = append(tagCols, f.name)
-		}
 	}
 
 	tgnc, _ := json.Marshal(tagCols)
