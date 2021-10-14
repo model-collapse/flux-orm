@@ -20,13 +20,79 @@ import "github.com/model-collapse/flux-orm/florm"
 ## Get Started
 There are some initial examples for you to understand how to use Florm. 
 
-### Query
+### Insert:
 ```
+import (
+    "github.com/model-collapse/flux-orm/florm"
+    "time"
+    "log"
+)
+
+type Log struct {
+    Series
+    IsFatal bool   `florm:"k,fatal"`
+    Position int   `florm:"k,position"`
+    Code string    `florm:"k,code"`
+    Risk float32   `florm:"v,risk"`
+    Content string `florm:"v,content"`
+}
+
+func (l *Log) Bucket() string {
+    return "misc1"
+}
+
+func (l *Log) Measurement() string {
+    return "log"
+}
+
+ss := florm.NewFluxSession()
+
+logs := []Log {
+    {
+        Series: Series{
+            Time: time.Now()
+        },
+        IsFatal: false,
+        Position: 1,
+        Code: "json",
+        Risk: 0.918,
+        Content: "[Info] it is running",
+    },
+    {
+        Series: Series{
+            Time: time.Now()
+        },
+        IsFatal: true,
+        Position: 2,
+        Code: "c++",
+        Risk: 1.97,
+        Content: "[Fatal] it is NOT running",
+    }
+}
+
+if err := ss.Insert(logs); err != nil {
+    log.Fatal(err)
+}
 ```
 
-
-### Insert
+### Query:
 ```
+type RiskAgg struct {
+    Code string `florm:"k,code"`
+    Risk float32 `florm:"v,risk"`
+}
+
+ss := florm.NewFluxSession()
+
+var riskHistogram []RiskAgg
+start := time.Date(2021, 7, 7, 0, 0, 0, 0, time.UTC)
+stop := time.Now()
+ss.Range(start, stop).Filter("(r) => (r._measurement==\"log\" and r._field==\"risk\")", "drop").GroupBy([]string{"code"}).Sum().Yield(&riskHistogram)
+
+if err := ss.ExecuteQuery(context.Background()); err != nil {
+    log.Fatal(err)
+}
+
 ```
 
 ## Data Models
@@ -52,7 +118,7 @@ func (s *Student) Bucket() string {
 }
 
 func (s *Student) Measurement() string {
-    return "measurement1"
+    return "grades"
 }
 
 ```
@@ -66,14 +132,71 @@ The field tag ```florm:"k,xxx"``` and ```florm:"v,xxx"``` indicates wehter this 
 > - The value of tag columns can NOT be modified. If you really need it, please **delete** it and **insert** again.
 
 ## FluxSession
+Each FluxSession is recommended to be used only once, if you want to use it twice, the query content in the last execution will still be there. So when you do anothe query, create a new one.
+The user can also create a session with customized ```APIManager``` object in order to manage APIs yourself. 
+```
+var mgr florm.APIManager
+...
 
+ss := NewFluxSessionCustomAPI(mgr)
+```
+The default api manager can be set via ```florm.RegisterDefaultAPIManager()```.
 
 ## Insert
+Inserting with Florm is mentioned in the example above. Besides an slice of structs, the insert api can also accept follow types:
+```
+// Single Struct
+Log{...}
+
+// Pointer to Struct
+&Log{...}
+
+// Slice of Struct
+[]Log{...}
+
+// Slice of Struct Points
+[]*Log{...}
+
+// Channel of struct 
+<-chan Log 
+<-chan *Log
+``` 
+> **WARNING:** The inserting process will not terminate util channels are closed, so be careful when use channels.
 
 ## Update
-> **WARNING:** The Florm update function follows the "Query - Set - Write" pipeline. Data writing is implemented by the ```to()``` clause of Flux language. You can select any data to be updated using flux query clauses and we will protect the update by filtering out those columns that are not in the given datamodel. However, we are not able to recall those columns that are missed by your query. So please review your update script **VERY CAREFULLY** before you run it, otherwise it will cause unpredicatable data inconsistency..
+Here is an example of data updating.
+```
+ss := NewFluxSession()
+
+s := Student {
+    Score: -1.0,
+}
+
+// Static is a range selection clause specificly for STable models
+ss.Static().Filter(`(r) => (r._measurement=="grades" and r.name=="sean")`, "drop").Update([]string{"name"}, &s)
+
+if err := ss.ExecuteQuery(context.Background()); err != nil {
+    log.Fatal(err)
+}
+```
+
+> **WARNING:** The Florm update function follows the "Query - Set - Overwrite" pipeline. Data writing is implemented by the ```to()``` clause of Flux language. You can select any data to be updated using flux query clauses even with ```join```, and we will protect the update by filtering out those columns that are not in the given datamodel. However, we are not able to recall those columns that are missed by your query. So please review your update script **VERY CAREFULLY** before you run it, otherwise it will cause unpredicatable data inconsistency..
 
 ## Delete
+Example of deleting some records:
+```
+ss := NewFluxSession()
+
+// deleting with primary ids
+if err := ss.Delete(context.Background(), &Student{}, 1, 2, 3); err != nil {
+    log.Fatal(err)
+} 
+
+if err := ss.DeleteWithFilter(context.Background(), &Log{Series:Series{Start:time.Unix(0,0), Stop:time.Now()}}, "r._measurement==\"log\""); err != nil {
+    log.Fatal(err)
+}
+```
+
 > **Notes**: the lambda expression used by delete API is different with those used in queries. Instead of using ```(r) => (r._measurement=="??")```, please just use the condition clause ```r._measurement=="??"```. This is suggested by InfluxDB offical API.
 
 

@@ -380,9 +380,3 @@ func (ss *FluxSession) DeleteWithFilter(ctx context.Context, m InfluxModel, fn s
 
 	return nil
 }
-
-var defaultAPIManager APIManager
-
-func RegisterDefaultAPIManager(m APIManager) {
-	defaultAPIManager = m
-}

@@ -71,3 +71,9 @@ func (l *LordAPIManager) DeleteAPI(bucket string) api.DeleteAPI {
 func (l *LordAPIManager) Org() string {
 	return l.org
 }
+
+var defaultAPIManager APIManager
+
+func RegisterDefaultAPIManager(m APIManager) {
+	defaultAPIManager = m
+}
