@@ -14,8 +14,6 @@ import (
 	"github.com/influxdata/influxdb-client-go/v2/api/query"
 )
 
-const FilterBufSize = 1000
-
 var ErrUnsupportedType = errors.New("unsupported data type in data model")
 var ErrParamFormat = errors.New("invalid parameter format")
 var ErrAssignTypeInconsistent = errors.New("type is inconsistent between value to assign and to be assigned")
@@ -422,7 +420,7 @@ func assignRecordToStructImpl(r *query.FluxRecord, v reflect.Value) {
 }
 
 func idSetToFilter(measurement string, ids []uint64) string {
-	buf := bytes.NewBuffer(make([]byte, FilterBufSize))
+	buf := bytes.NewBuffer(nil)
 	for i, id := range ids {
 		fmt.Fprintf(buf, "r.key==\"%d\"", id)
 		if i < len(ids)-1 {

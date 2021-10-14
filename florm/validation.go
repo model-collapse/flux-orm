@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"sort"
 	"time"
 )
 
@@ -23,6 +24,7 @@ const (
 )
 
 var schemaCheckOffset = -time.Hour * 24 * 30
+var ErrNoSchemaData = errors.New("no schema data found in the time period")
 
 func checkYieldReceiver(v interface{}) error {
 	vv := reflect.ValueOf(v)
@@ -49,11 +51,7 @@ func checkYieldReceiver(v interface{}) error {
 	return nil
 }
 
-func checkSchema(m InfluxModel, mgr APIManager, mode int) error {
-	if mgr == nil {
-		mgr = defaultAPIManager
-	}
-
+func CheckSchema(m InfluxModel, mgr APIManager, mode int) error {
 	start := time.Unix(0, 0)
 	end := time.Unix(0, 1)
 
@@ -62,12 +60,28 @@ func checkSchema(m InfluxModel, mgr APIManager, mode int) error {
 		end = time.Now()
 	}
 
-	ss := NewFluxSessionCustomAPI(mgr)
-	shp := SchemaHelper{ss: ss}
+	return checkSchema(m, mgr, mode, start, end)
+}
 
-	tagPerms, err := shp.GetTagKeysPerm(m.Bucket(), m.Measurement(), start, end)
+func checkSchema(m InfluxModel, mgr APIManager, mode int, start, stop time.Time) error {
+	if mgr == nil {
+		mgr = defaultAPIManager
+	}
+
+	ss := NewFluxSessionCustomAPI(mgr)
+	shp := NewSchemaHelper(ss)
+
+	tagPerms, err := shp.GetTagKeysPerm(m.Bucket(), m.Measurement(), start, stop)
 	if err != nil {
 		return err
+	}
+
+	if len(tagPerms) == 0 {
+		return ErrNoSchemaData
+	}
+
+	for i, t := range tagPerms {
+		tagPerms[i] = strDedup(append(t, "_time"))
 	}
 
 	tagCols, valCols, err := extractTagAndValueCols(m)
@@ -75,10 +89,10 @@ func checkSchema(m InfluxModel, mgr APIManager, mode int) error {
 		return err
 	}
 
-	tagCols = strDedup(append(tagCols, "_time", "_start", "_stop"))
+	tagCols = strDedup(append(tagCols, "_field", "_measurement", "_time", "_start", "_stop"))
 	if mode == CheckModeStrict {
 		if len(tagPerms) > 1 {
-			return errors.New("[strict] historical tags permutations are not consistent")
+			return fmt.Errorf("[strict] historical tags permutations are not consistent, versions are %v", tagPerms)
 		}
 
 		if !cmpStrArray(tagCols, tagPerms[0]) {
@@ -100,14 +114,21 @@ func checkSchema(m InfluxModel, mgr APIManager, mode int) error {
 		}
 	}
 
-	fieldPerms, err := shp.GetFieldsPerm(m.Bucket(), m.Measurement(), start, end)
+	ss = NewFluxSessionCustomAPI(mgr)
+	shp = NewSchemaHelper(ss)
+
+	fieldPerms, err := shp.GetFieldsPerm(m.Bucket(), m.Measurement(), start, stop)
 	if err != nil {
 		return err
 	}
 
+	for _, t := range fieldPerms {
+		sort.Strings(t)
+	}
+
 	if mode == CheckModeStrict {
 		if len(fieldPerms) > 1 {
-			return errors.New("[strict] historical field permutations are not consistent")
+			return fmt.Errorf("[strict] historical field permutations are not consistent, versions are: %v", fieldPerms)
 		}
 
 		if !cmpStrArray(valCols, fieldPerms[0]) {

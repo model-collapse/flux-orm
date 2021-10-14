@@ -11,9 +11,12 @@ import (
 
 var initialAPIOnce sync.Once
 
+const testOrg = "charlie.yang.nju@gmail.com"
+const testToken = "hDHUGj34tYfx1HEwVIqiW_uZhMUxSiKpFLRCr__csNY_1QgVuKmPi8zrqsO-QEtzA-Rc8WsAKH_cZSCZS1nhaA=="
+
 func initializeAPI() {
-	client := influxdb2.NewClient("https://us-west-2-1.aws.cloud2.influxdata.com", "hDHUGj34tYfx1HEwVIqiW_uZhMUxSiKpFLRCr__csNY_1QgVuKmPi8zrqsO-QEtzA-Rc8WsAKH_cZSCZS1nhaA==")
-	mgr := NewLordAPIManager(client, "charlie.yang.nju@gmail.com")
+	client := influxdb2.NewClient("https://us-west-2-1.aws.cloud2.influxdata.com", testToken)
+	mgr := NewLordAPIManager(client, testOrg)
 
 	RegisterDefaultAPIManager(mgr)
 }

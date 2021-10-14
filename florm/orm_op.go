@@ -34,7 +34,7 @@ func Range(in FluxStream, start time.Time, stop time.Time) FluxStream {
 		in:      in,
 		session: in.Session(),
 		op:      OpRange,
-		params:  []string{fkvI("start", int(start.UnixNano())), fkvI("stop", int(stop.UnixNano()))},
+		params:  []string{fkvS("start", start.Format(time.RFC3339Nano)), fkvS("stop", stop.Format(time.RFC3339Nano))},
 	}
 }
 

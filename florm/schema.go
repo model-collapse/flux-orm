@@ -19,6 +19,10 @@ type SchemaHelper struct {
 	ss *FluxSession
 }
 
+func NewSchemaHelper(ss *FluxSession) SchemaHelper {
+	return SchemaHelper{ss: ss}
+}
+
 func (s *SchemaHelper) GetTagKeysPerm(bucket, measurement string, start, stop time.Time) (ret [][]string, reterr error) {
 	var perms []schemaPerm
 	fn := fmt.Sprintf(`(r) => (r._measurement == "%s")`, measurement)
@@ -63,7 +67,14 @@ func (s *SchemaHelper) GetFieldsPerm(bucket, measurement string, start, stop tim
 
 	for _, p := range perms {
 		tags := strings.Split(p.Perm, ",")
-		ret = append(ret, tags)
+		var ntg []string
+		for _, t := range tags {
+			if len(t) > 0 {
+				ntg = append(ntg, t)
+			}
+		}
+
+		ret = append(ret, ntg)
 	}
 
 	return

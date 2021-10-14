@@ -15,8 +15,6 @@ import (
 	"github.com/influxdata/influxdb-client-go/v2/api/query"
 )
 
-const YieldBufSize = 100
-
 var ErrInvalidInput = errors.New("the input should be InfluxModel or a slice / channle of InfluxModel")
 var ErrSeriesNotSupported = errors.New("delete by id can not be used in series data model, please use other delete api")
 var ErrSeriesNotFound = errors.New("with IsSeries=true, we cannot find any presence of Series struct in the data model")
