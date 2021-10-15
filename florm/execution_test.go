@@ -11,8 +11,8 @@ import (
 
 var initialAPIOnce sync.Once
 
-const testOrg = "charlie.yang.nju@gmail.com"
-const testToken = "hDHUGj34tYfx1HEwVIqiW_uZhMUxSiKpFLRCr__csNY_1QgVuKmPi8zrqsO-QEtzA-Rc8WsAKH_cZSCZS1nhaA=="
+const testOrg = "****"
+const testToken = "***"
 
 func initializeAPI() {
 	client := influxdb2.NewClient("https://us-west-2-1.aws.cloud2.influxdata.com", testToken)
